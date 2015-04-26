@@ -1,0 +1,107 @@
+---
+title: "Practical Machine Learning Project"
+date: "April 24, 2015"
+output: html_document
+---
+
+In order to predict the manner in which the barbell lifts were done, we will use 
+the caret package.  First, the training data set is loaded in.  After inspecting 
+the training data, it is apparent that there are a number of variables with missing
+data.
+
+```{r}
+library(caret)
+training_data <- read.table(file='pml-training.csv', header=T, sep=",", na.strings="NA")
+summary(training_data)
+```
+
+To speed the efficiency of the machine learning algortihm, and because many algorithms
+cannot handle missing data, all variables in which more than 50% of the observations
+were missing are removed.  In addition, two variables that are not measurements taken
+during the excercise, the observation identifier and the user name, and therefore should
+not be utilized in the prediction are removed.
+
+```{r}
+training_NA <- training_data[,colSums(is.na(training_data))<nrow(training_data)*.5]
+training_complete <- training_NA[,colSums(training_NA=="")<nrow(training_NA)*.5]
+training_complete <- training_complete[,3:ncol(training_complete)]
+```
+
+Because we are not provided testing data separate from the final validation data, we
+split the testing data into a training set and a testing set; 80% of the data is used
+for the training set and 20% of the data is used for the testing set.
+
+```{r}
+inTrain <- createDataPartition(training_complete$classe, p=.8, list=FALSE)
+train_set <- training_complete[inTrain,]
+test_set <- training_complete[-inTrain,]
+```
+
+Because random forest often peforms well in prediction, we will attempt a Random
+Forest model using the train function in the caret package.  The train function
+has the additional advantage of performing boostraping when building the Random Forest
+trees.
+
+```{r}
+RF_model <- train(classe~., data=train_set, method="rf")
+RF_model
+```
+
+Based on the output from the Random Forest model, the estimated out of sample error
+rate is `r 1-RF_model$results[1,2]`.  Cross validation is not needed in this case to 
+estimate the out of sample error rate because of the each tree is constructed by boostrapping 
+the original data such that a subset of the data is left out and not used in the 
+construction of the tree; this subset is used then used as a test set on the constructed tree
+and the rate of correct classification of the test set is used to estimate the out of sample error rate.  This is the equivalent to should be done in the cross validation of a machine learning algorithm, 
+where a training set is split into a training and test set; a model is built on the training
+set and then evaluated on the test set; and this is repeated and the errors averaged to
+obtain the estimated out of sample error rate.  We can also plot the accuracy of the
+three best performing trees.
+
+```{r}
+plot(RF_model)
+```
+
+Based on the estimated out of sample error rate, Random Forest seems to have been
+a good choice for a model, so we will see how the model performs with the data that was
+set aside as the testing data.
+
+```{r}
+RF_predict <- predict(RF_model, test_set)
+```
+
+Comparing the predictions to the true values, we see that the model also performs well
+on the test data.
+
+```{r}
+table(RF_predict, test_set$classe)
+```
+
+We can use this test data to calculate the actual out of sample error rate.
+
+```{r}
+accuracy <- confusionMatrix(RF_predict, test_set$classe)$overall[1]
+error <- 1-accuracy
+```
+
+The out of sample error rate is `r error`, which is very close to the estimated
+out of sample error rate `r 1-RF_model$results[1,2]`.
+
+Finally, we use an indepdent validation set to test the model.  The validation data is loaded
+and cleaned in a similar manner to the training data.
+
+```{r}
+validation_data <- read.table(file='pml-testing.csv', header=T, sep=",", na.strings="NA")
+
+validation_NA <- validation_data[,colSums(is.na(validation_data))<nrow(validation_data)*.5]
+validation_complete <- validation_NA[,colSums(validation_NA=="")<nrow(validation_NA)*.5]
+
+validation_complete <- validation_complete[,3:ncol(validation_complete)]
+```
+
+And the predictions for the validation set are computed in a similar manner to the
+test data set.
+
+```{r}
+RF_valid <- predict(RF_model, validation_complete)
+```
